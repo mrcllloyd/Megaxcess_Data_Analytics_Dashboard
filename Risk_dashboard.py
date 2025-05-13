@@ -130,33 +130,41 @@ kyc_summary = pd.DataFrame({
     "Player Count": [len(verified_players), len(unverified_players)]
 })
 
-# KYC Metrics and Charts
+# --- KYC Metrics and Trend ---
 conversion_rate = len(verified_players) / len(player_info) * 100 if len(player_info) > 0 else 0
 st.metric("✅ KYC Conversion Rate", f"{conversion_rate:.2f}%")
 
-if not verified_players.empty:
+# KYC timeline - show if data exists
+if 'verify_date' in verified_players.columns and not verified_players.empty:
     kyc_timeline = verified_players.copy()
-    kyc_timeline['verify_date'] = pd.to_datetime(kyc_timeline['verify_date'])
-    kyc_timeline = kyc_timeline.groupby(kyc_timeline['verify_date'].dt.to_period("M")).size().reset_index(name='verified_count')
-    kyc_timeline['verify_date'] = kyc_timeline['verify_date'].dt.to_timestamp()
-    st.line_chart(kyc_timeline.set_index('verify_date')['verified_count'])
+    kyc_timeline['verify_date'] = pd.to_datetime(kyc_timeline['verify_date'], errors='coerce')
+    timeline_summary = (
+        kyc_timeline.groupby(kyc_timeline['verify_date'].dt.to_period("M"))
+        .size().reset_index(name='verified_count')
+    )
+    timeline_summary['verify_date'] = timeline_summary['verify_date'].dt.to_timestamp()
+    
+    if not timeline_summary.empty:
+        st.subheader("📆 Verified Players Over Time")
+        st.line_chart(timeline_summary.set_index('verify_date')['verified_count'])
+    else:
+        st.info("ℹ️ Not enough KYC timeline data to plot.")
 
+# KYC duration histogram
 player_info['kyc_days'] = (player_info['verify_date'] - player_info['registered_date']).dt.days
 valid_durations = player_info[player_info['kyc_days'].notnull() & (player_info['kyc_days'] >= 0)]
+
 if not valid_durations.empty:
     avg_days = valid_durations['kyc_days'].mean()
     st.metric("⏱️ Avg Days to Verify", f"{avg_days:.1f} days")
     fig_dur, ax_dur = plt.subplots()
-    sns.histplot(valid_durations['kyc_days'], bins=20, ax=ax_dur)
+    sns.histplot(valid_durations['kyc_days'], bins=20, ax=ax_dur, color='skyblue')
     ax_dur.set_title("Distribution of Days to KYC Completion")
+    ax_dur.set_xlabel("Days from Registration to Verification")
+    ax_dur.set_ylabel("Number of Players")
     st.pyplot(fig_dur)
 else:
-    st.info("No valid KYC durations.")
-
-fig_kyc, ax = plt.subplots()
-ax.bar(kyc_summary['Status'], kyc_summary['Player Count'], color=['green', 'red'])
-ax.set_title("KYC Verification Summary")
-st.pyplot(fig_kyc)
+    st.info("ℹ️ Not enough valid records to show KYC duration distribution.")
 
 # 🧠 Fuzzy Matching
 st.subheader("🧠 Fuzzy Matching: Possible Duplicate Accounts")
