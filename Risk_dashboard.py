@@ -197,3 +197,42 @@ if not fuzzy_df.empty:
     st.dataframe(fuzzy_df.sort_values(by='similarity_score', ascending=False).head(20))
 else:
     st.info("No highly similar player profiles detected.")
+
+
+# PDF Export Button
+st.markdown("---")
+if st.button("📄 Download Full Dashboard as PDF"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(0, 10, "Player Risk Dashboard Summary", ln=True)
+    pdf.cell(0, 10, f"Date Range: {start_date.date()} to {end_date.date()} | SP_NAME: {selected_sp}", ln=True)
+
+    # Export KYC Chart
+    kyc_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    fig_kyc.savefig(kyc_chart.name, dpi=300, bbox_inches='tight')
+    pdf.add_page()
+    pdf.image(kyc_chart.name, x=10, y=30, w=190)
+
+    # Export KYC Histogram if available
+    if 'fig_dur' in locals():
+        kyc_dur_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        fig_dur.savefig(kyc_dur_chart.name, dpi=300, bbox_inches='tight')
+        pdf.add_page()
+        pdf.image(kyc_dur_chart.name, x=10, y=30, w=190)
+
+    # Add Top Fuzzy Matches if available
+    if not fuzzy_df.empty:
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 10, "Fuzzy Matched Players (Top 10)", ln=True)
+        pdf.set_font("Arial", '', 10)
+        for _, row in fuzzy_df.sort_values(by='similarity_score', ascending=False).head(10).iterrows():
+            txt = f"{row['player1']} ↔ {row['player2']} | Score: {row['similarity_score']}"
+            pdf.cell(0, 8, txt.encode('latin-1', 'replace').decode('latin-1'), ln=True)
+
+    pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+    pdf.output(pdf_path)
+    with open(pdf_path, "rb") as f:
+        st.download_button("Download PDF", f.read(), file_name="dashboard_summary.pdf", mime="application/pdf")
+
