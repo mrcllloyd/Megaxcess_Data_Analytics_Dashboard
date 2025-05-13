@@ -1,7 +1,5 @@
+streamlit
 pandas
 matplotlib
 seaborn
-streamlit
-openpyxl
 fpdf
-tempfile
