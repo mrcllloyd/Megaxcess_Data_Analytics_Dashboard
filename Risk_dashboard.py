@@ -62,7 +62,7 @@ else:
     filtered['period'] = filtered['reportdate'].dt.to_period("Y").dt.start_time
 
 # Header
-st.title("🎯 Player Risk Dashboard")
+st.title(" Player Data Analytics Dashboard")
 st.write(f"📅 Date Range: {start_date.date()} to {end_date.date()}  |  SP_NAME: {selected_sp}  |  Granularity: {granularity}")
 
 # Summary
@@ -105,7 +105,7 @@ st.dataframe(risk_summary)
 st.bar_chart(filtered['risk_level'].value_counts())
 
 # Top Players
-st.subheader(f"🏅 Top 10 Players by Wager for {selected_sp}")
+st.subheader(f" Top 10 Players by Wager for {selected_sp}")
 top_players = filtered.sort_values(by='wageramount', ascending=False).head(10)[[
     'playerid', 'gamename', 'wageramount', 'holdamount', 'risk_level', 'occupation'
 ]]
@@ -134,7 +134,7 @@ plt.tight_layout()
 st.pyplot(fig_kyc)
 
 # Fuzzy Matching
-st.subheader("🧠 Fuzzy Matching: Possible Duplicate Accounts")
+st.subheader(" Fuzzy Matching: Possible Duplicate Accounts")
 expected_columns = ['firstname', 'lastname', 'email', 'username', 'mobileno', 'city', 'region', 'zipcode']
 identity_columns = [col for col in expected_columns if col in player_info.columns]
 
