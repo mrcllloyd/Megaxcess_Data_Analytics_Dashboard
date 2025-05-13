@@ -1,3 +1,4 @@
+# ⚙️ Imports
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ from fpdf import FPDF
 from rapidfuzz import fuzz
 import tempfile
 
+# 🧮 Load and Merge Data
 @st.cache_data
 def load_data():
     player_info = pd.read_csv("player_info.csv")
@@ -35,7 +37,7 @@ def load_data():
 
 merged_df, player_info = load_data()
 
-# Sidebar
+# 🎛️ Sidebar Filters
 st.sidebar.title("Filters")
 date_range = st.sidebar.date_input("Date Range", [merged_df['reportdate'].min(), merged_df['reportdate'].max()])
 sp_options = ['All'] + sorted(merged_df['SP_NAME'].dropna().unique().tolist())
@@ -46,7 +48,7 @@ filtered = merged_df[(merged_df['reportdate'] >= start_date) & (merged_df['repor
 if selected_sp != 'All':
     filtered = filtered[filtered['SP_NAME'] == selected_sp]
 
-# Granularity
+# ⏱️ Granularity
 days_range = (end_date - start_date).days
 if days_range <= 7:
     granularity = 'Daily'
@@ -61,11 +63,11 @@ else:
     granularity = 'Yearly'
     filtered['period'] = filtered['reportdate'].dt.to_period("Y").dt.start_time
 
-# Header
+# 🧭 Dashboard Title
 st.title("🎯 Player Risk Dashboard")
-st.write(f"📅 Date Range: {start_date.date()} to {end_date.date()}  |  SP_NAME: {selected_sp}  |  Granularity: {granularity}")
+st.write(f"📅 Date Range: {start_date.date()} to {end_date.date()} | SP_NAME: {selected_sp} | Granularity: {granularity}")
 
-# Summary
+# 📈 Wager Summary
 summary = filtered.groupby('period').agg(
     total_players=('playerid', 'nunique'),
     total_wager=('wageramount', 'sum'),
@@ -74,7 +76,7 @@ summary = filtered.groupby('period').agg(
 st.subheader(f"📈 Wager Trend Over Time for {selected_sp}")
 st.line_chart(summary.set_index('period')['total_wager'])
 
-# Risk Flags
+# 🚩 Risk Flags by Occupation
 player_metrics = filtered.groupby(['playerid', 'occupation']).agg(
     total_sessions=('wagernum', 'sum'),
     total_wager=('wageramount', 'sum'),
@@ -94,7 +96,7 @@ if not flag_summary.empty:
 else:
     st.info("No risk flags detected.")
 
-# Risk Level Summary
+# 📊 Risk Level Distribution
 risk_summary = filtered.groupby('risk_level').agg(
     unique_players=('playerid', 'nunique'),
     total_wager=('wageramount', 'sum'),
@@ -104,14 +106,14 @@ st.subheader("📊 Risk Level Distribution")
 st.dataframe(risk_summary)
 st.bar_chart(filtered['risk_level'].value_counts())
 
-# Top Players
+# 🏅 Top 10 Players
 st.subheader(f"🏅 Top 10 Players by Wager for {selected_sp}")
 top_players = filtered.sort_values(by='wageramount', ascending=False).head(10)[[
     'playerid', 'gamename', 'wageramount', 'holdamount', 'risk_level', 'occupation'
 ]]
 st.dataframe(top_players)
 
-# KYC Analysis
+# 🔐 KYC Analysis
 st.subheader("📌 KYC Status Analysis")
 player_info['registered_date'] = pd.to_datetime(player_info['registered_date'], errors='coerce')
 player_info['verify_date'] = pd.to_datetime(player_info['verify_date'], errors='coerce')
@@ -123,26 +125,22 @@ unverified_players = player_info[
     (player_info['kyc_status'].str.lower() != 'verified') &
     ((today - player_info['registered_date']) >= pd.Timedelta(days=3))
 ]
-
 kyc_summary = pd.DataFrame({
     "Status": ["Verified", "Unverified (3+ days)"],
     "Player Count": [len(verified_players), len(unverified_players)]
 })
 
-# Conversion Rate
+# KYC Metrics and Charts
 conversion_rate = len(verified_players) / len(player_info) * 100 if len(player_info) > 0 else 0
 st.metric("✅ KYC Conversion Rate", f"{conversion_rate:.2f}%")
 
-# Verification Timeline
-if not verified_players.empty and 'verify_date' in verified_players.columns:
+if not verified_players.empty:
     kyc_timeline = verified_players.copy()
     kyc_timeline['verify_date'] = pd.to_datetime(kyc_timeline['verify_date'])
     kyc_timeline = kyc_timeline.groupby(kyc_timeline['verify_date'].dt.to_period("M")).size().reset_index(name='verified_count')
     kyc_timeline['verify_date'] = kyc_timeline['verify_date'].dt.to_timestamp()
-    st.subheader("📆 KYC Verified Players Over Time")
     st.line_chart(kyc_timeline.set_index('verify_date')['verified_count'])
 
-# KYC Duration
 player_info['kyc_days'] = (player_info['verify_date'] - player_info['registered_date']).dt.days
 valid_durations = player_info[player_info['kyc_days'].notnull() & (player_info['kyc_days'] >= 0)]
 if not valid_durations.empty:
@@ -151,35 +149,31 @@ if not valid_durations.empty:
     fig_dur, ax_dur = plt.subplots()
     sns.histplot(valid_durations['kyc_days'], bins=20, ax=ax_dur)
     ax_dur.set_title("Distribution of Days to KYC Completion")
-    ax_dur.set_xlabel("Days from Registration to Verification")
     st.pyplot(fig_dur)
 else:
-    st.info("No valid KYC durations available.")
+    st.info("No valid KYC durations.")
 
 fig_kyc, ax = plt.subplots()
 ax.bar(kyc_summary['Status'], kyc_summary['Player Count'], color=['green', 'red'])
 ax.set_title("KYC Verification Summary")
-ax.set_ylabel("Number of Players")
-plt.tight_layout()
 st.pyplot(fig_kyc)
 
-# Fuzzy Matching
+# 🧠 Fuzzy Matching
 st.subheader("🧠 Fuzzy Matching: Possible Duplicate Accounts")
 expected_columns = ['firstname', 'lastname', 'email', 'username', 'mobileno', 'city', 'region', 'zipcode']
 identity_columns = [col for col in expected_columns if col in player_info.columns]
-
 st.write("✅ Available identity columns:", identity_columns)
 missing_columns = [col for col in expected_columns if col not in identity_columns]
 if missing_columns:
     st.warning(f"⚠️ Missing identity columns: {missing_columns}")
 
 if len(identity_columns) < 2:
-    st.warning("Not enough identity columns available for fuzzy matching.")
+    st.warning("Not enough identity columns for fuzzy matching.")
     fuzzy_df = pd.DataFrame()
 else:
     cleaned_info = player_info.dropna(subset=identity_columns).copy()
-    cleaned_info['identity_string'] = cleaned_info[identity_columns].astype(str).apply(lambda row: ' '.join(row.str.lower().str.strip()), axis=1)
-
+    cleaned_info['identity_string'] = cleaned_info[identity_columns].astype(str).apply(
+        lambda row: ' '.join(row.str.lower().str.strip()), axis=1)
     subset = cleaned_info[['player_id', 'identity_string']].head(300)
     fuzzy_results = []
     for i in range(len(subset)):
@@ -198,8 +192,7 @@ if not fuzzy_df.empty:
 else:
     st.info("No highly similar player profiles detected.")
 
-
-# PDF Export Button
+# 📄 PDF Export
 st.markdown("---")
 if st.button("📄 Download Full Dashboard as PDF"):
     pdf = FPDF()
@@ -208,24 +201,22 @@ if st.button("📄 Download Full Dashboard as PDF"):
     pdf.cell(0, 10, "Player Risk Dashboard Summary", ln=True)
     pdf.cell(0, 10, f"Date Range: {start_date.date()} to {end_date.date()} | SP_NAME: {selected_sp}", ln=True)
 
-    # Export KYC Chart
-    kyc_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    fig_kyc.savefig(kyc_chart.name, dpi=300, bbox_inches='tight')
-    pdf.add_page()
-    pdf.image(kyc_chart.name, x=10, y=30, w=190)
-
-    # Export KYC Histogram if available
-    if 'fig_dur' in locals():
-        kyc_dur_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        fig_dur.savefig(kyc_dur_chart.name, dpi=300, bbox_inches='tight')
+    if 'fig_kyc' in locals():
+        kyc_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        fig_kyc.savefig(kyc_chart.name, dpi=300, bbox_inches='tight')
         pdf.add_page()
-        pdf.image(kyc_dur_chart.name, x=10, y=30, w=190)
+        pdf.image(kyc_chart.name, x=10, y=30, w=190)
 
-    # Add Top Fuzzy Matches if available
+    if 'fig_dur' in locals():
+        dur_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        fig_dur.savefig(dur_chart.name, dpi=300, bbox_inches='tight')
+        pdf.add_page()
+        pdf.image(dur_chart.name, x=10, y=30, w=190)
+
     if not fuzzy_df.empty:
         pdf.add_page()
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, "Fuzzy Matched Players (Top 10)", ln=True)
+        pdf.cell(0, 10, "Top 10 Fuzzy Matched Players", ln=True)
         pdf.set_font("Arial", '', 10)
         for _, row in fuzzy_df.sort_values(by='similarity_score', ascending=False).head(10).iterrows():
             txt = f"{row['player1']} ↔ {row['player2']} | Score: {row['similarity_score']}"
@@ -235,4 +226,3 @@ if st.button("📄 Download Full Dashboard as PDF"):
     pdf.output(pdf_path)
     with open(pdf_path, "rb") as f:
         st.download_button("Download PDF", f.read(), file_name="dashboard_summary.pdf", mime="application/pdf")
-
