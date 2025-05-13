@@ -5,7 +5,6 @@ import seaborn as sns
 from fpdf import FPDF
 import tempfile
 
-# Load datasets
 @st.cache_data
 def load_data():
     player_info = pd.read_csv("player_info.csv")
@@ -30,7 +29,6 @@ def load_data():
             return "ACT (Pathological)"
         else:
             return "STOP (Exclude)"
-
     merged['risk_level'] = merged.apply(classify_risk, axis=1)
     return merged
 
@@ -66,17 +64,16 @@ else:
 st.title("🎯 Player Risk Dashboard")
 st.write(f"📅 Date Range: {start_date.date()} to {end_date.date()}  |  SP_NAME: {selected_sp}  |  Granularity: {granularity}")
 
-# Time Series Summary
+# Summary
 summary = filtered.groupby('period').agg(
     total_players=('playerid', 'nunique'),
     total_wager=('wageramount', 'sum'),
     total_hold=('holdamount', 'sum')
 ).reset_index()
-
 st.subheader(f"📈 Wager Trend Over Time for {selected_sp}")
 st.line_chart(summary.set_index('period')['total_wager'])
 
-# Player Risk Flags
+# Risk Flags
 player_metrics = filtered.groupby(['playerid', 'occupation']).agg(
     total_sessions=('wagernum', 'sum'),
     total_wager=('wageramount', 'sum'),
@@ -84,19 +81,17 @@ player_metrics = filtered.groupby(['playerid', 'occupation']).agg(
     max_single_bet=('wageramount', 'max'),
     wager_days=('reportdate', 'nunique')
 ).reset_index()
-
 player_metrics['avg_wager_per_day'] = player_metrics['total_wager'] / player_metrics['wager_days']
 player_metrics['big_bet_flag'] = player_metrics['max_single_bet'] >= 100000
 player_metrics['high_freq_flag'] = player_metrics['total_sessions'] >= 50
 player_metrics['daily_spike_flag'] = player_metrics['avg_wager_per_day'] >= 20000
 
 flag_summary = player_metrics.groupby('occupation')[['big_bet_flag', 'high_freq_flag', 'daily_spike_flag']].sum()
-
 st.subheader("🚩 Risk Flags by Occupation")
 if not flag_summary.empty:
     st.bar_chart(flag_summary)
 else:
-    st.info("No risk flags detected for the selected date range and SP_NAME.")
+    st.info("No risk flags detected.")
 
 # Risk Level Summary
 risk_summary = filtered.groupby('risk_level').agg(
@@ -104,7 +99,6 @@ risk_summary = filtered.groupby('risk_level').agg(
     total_wager=('wageramount', 'sum'),
     total_hold=('holdamount', 'sum')
 ).reset_index()
-
 st.subheader("📊 Risk Level Distribution")
 st.dataframe(risk_summary)
 st.bar_chart(filtered['risk_level'].value_counts())
@@ -117,7 +111,6 @@ top_players = filtered.sort_values(by='wageramount', ascending=False).head(10)[[
 st.dataframe(top_players)
 
 # PDF Export
-
 def save_chart_as_image(fig):
     tmpfile = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
     fig.savefig(tmpfile.name, dpi=300, bbox_inches='tight')
@@ -128,44 +121,43 @@ def generate_pdf():
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, f"Player Risk Dashboard - {selected_sp}", ln=True, align="C")
-    pdf.ln(5)
-
+    title = f"Player Risk Dashboard - {selected_sp}".encode('latin-1', 'replace').decode('latin-1')
+    pdf.cell(200, 10, title, ln=True, align="C")
     pdf.set_font("Arial", '', 12)
-    pdf.multi_cell(0, 10, f"Date Range: {start_date.date()} to {end_date.date()}\nGranularity: {granularity}")
+    pdf.ln(5)
+    subtitle = f"Date Range: {start_date.date()} to {end_date.date()}\nGranularity: {granularity}"
+    pdf.multi_cell(0, 10, subtitle.encode('latin-1', 'replace').decode('latin-1'))
 
-    # Charts to images
-    figs = []
+    images = []
     if not summary.empty:
         fig, ax = plt.subplots()
         ax.plot(summary['period'], summary['total_wager'], marker='o')
         ax.set_title("Wager Trend")
-        ax.set_ylabel("Total Wager")
-        figs.append(save_chart_as_image(fig))
+        images.append(save_chart_as_image(fig))
 
     if not flag_summary.empty:
         fig, ax = plt.subplots()
         flag_summary.plot(kind='bar', stacked=True, ax=ax)
         ax.set_title("Risk Flags by Occupation")
-        figs.append(save_chart_as_image(fig))
+        images.append(save_chart_as_image(fig))
 
     fig, ax = plt.subplots()
     sns.countplot(data=filtered, x='risk_level', ax=ax)
     ax.set_title("Risk Level Distribution")
-    figs.append(save_chart_as_image(fig))
+    images.append(save_chart_as_image(fig))
 
-    for img in figs:
+    for img in images:
         pdf.add_page()
         pdf.image(img, x=10, y=30, w=190)
 
-    # Add table of top players
     pdf.add_page()
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(0, 10, "Top 10 Players", ln=True)
     pdf.set_font("Arial", '', 10)
     for _, row in top_players.iterrows():
-        txt = f"{row['playerid']} | {row['gamename']} | {row['risk_level']} | ₱{row['wageramount']:.2f}"
-        pdf.cell(0, 8, txt, ln=True)
+        line = f"{row['playerid']} | {row['gamename']} | {row['risk_level']} | ₱{row['wageramount']:.2f}"
+        safe_line = line.encode('latin-1', 'replace').decode('latin-1')
+        pdf.cell(0, 8, safe_line, ln=True)
 
     temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     pdf.output(temp_pdf.name)
@@ -175,7 +167,4 @@ st.markdown("---")
 if st.button("📄 Generate Full PDF Report"):
     pdf_path = generate_pdf()
     with open(pdf_path, "rb") as f:
-        st.download_button(label="Download PDF",
-                           data=f.read(),
-                           file_name="dashboard_report.pdf",
-                           mime="application/pdf")
+        st.download_button("Download PDF", f.read(), file_name="dashboard_report.pdf", mime="application/pdf")
