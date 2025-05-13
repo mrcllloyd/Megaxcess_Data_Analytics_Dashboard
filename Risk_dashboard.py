@@ -123,6 +123,7 @@ unverified_players = player_info[
     (player_info['kyc_status'].str.lower() != 'verified') &
     ((today - player_info['registered_date']) >= pd.Timedelta(days=3))
 ]
+
 kyc_summary = pd.DataFrame({
     "Status": ["Verified", "Unverified (3+ days)"],
     "Player Count": [len(verified_players), len(unverified_players)]
@@ -132,24 +133,26 @@ kyc_summary = pd.DataFrame({
 conversion_rate = len(verified_players) / len(player_info) * 100 if len(player_info) > 0 else 0
 st.metric("✅ KYC Conversion Rate", f"{conversion_rate:.2f}%")
 
-# KYC Verification Over Time
-kyc_timeline = verified_players.copy()
-kyc_timeline['verify_date'] = pd.to_datetime(kyc_timeline['verify_date'])
-kyc_timeline = kyc_timeline.groupby(kyc_timeline['verify_date'].dt.to_period("M")).size().reset_index(name='verified_count')
-kyc_timeline['verify_date'] = kyc_timeline['verify_date'].dt.to_timestamp()
-st.line_chart(kyc_timeline.set_index('verify_date')['verified_count'])
+# Verification Timeline
+if not verified_players.empty and 'verify_date' in verified_players.columns:
+    kyc_timeline = verified_players.copy()
+    kyc_timeline['verify_date'] = pd.to_datetime(kyc_timeline['verify_date'])
+    kyc_timeline = kyc_timeline.groupby(kyc_timeline['verify_date'].dt.to_period("M")).size().reset_index(name='verified_count')
+    kyc_timeline['verify_date'] = kyc_timeline['verify_date'].dt.to_timestamp()
+    st.subheader("📆 KYC Verified Players Over Time")
+    st.line_chart(kyc_timeline.set_index('verify_date')['verified_count'])
 
-# Days to Verify
+# KYC Duration
 player_info['kyc_days'] = (player_info['verify_date'] - player_info['registered_date']).dt.days
 valid_durations = player_info[player_info['kyc_days'].notnull() & (player_info['kyc_days'] >= 0)]
 if not valid_durations.empty:
     avg_days = valid_durations['kyc_days'].mean()
     st.metric("⏱️ Avg Days to Verify", f"{avg_days:.1f} days")
-    fig, ax = plt.subplots()
-    sns.histplot(valid_durations['kyc_days'], bins=20, ax=ax)
-    ax.set_title("Distribution of Days to KYC Completion")
-    ax.set_xlabel("Days from Registration to Verification")
-    st.pyplot(fig)
+    fig_dur, ax_dur = plt.subplots()
+    sns.histplot(valid_durations['kyc_days'], bins=20, ax=ax_dur)
+    ax_dur.set_title("Distribution of Days to KYC Completion")
+    ax_dur.set_xlabel("Days from Registration to Verification")
+    st.pyplot(fig_dur)
 else:
     st.info("No valid KYC durations available.")
 
